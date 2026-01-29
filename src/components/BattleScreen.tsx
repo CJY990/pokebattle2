@@ -4,6 +4,8 @@ import { getRandomCards, getRandomCard, ALL_CARDS } from '../data/cards';
 import { motion, AnimatePresence } from 'framer-motion';
 import ClashScene from './ClashScene'; // [NEW] ClashScene Import
 
+import { getDamageMultiplier } from '../data/typeChart';
+
 const BattleScreen: React.FC = () => {
     // Game State
     const [round, setRound] = useState(1);
@@ -28,7 +30,6 @@ const BattleScreen: React.FC = () => {
 
     // 애니메이션 State
     const [drawingCard, setDrawingCard] = useState<Card | null>(null);
-    const [drawingOppCard, setDrawingOppCard] = useState<Card | null>(null);
 
     // [NEW] Clash Animation State
     const [showClashScene, setShowClashScene] = useState(false);
@@ -38,9 +39,6 @@ const BattleScreen: React.FC = () => {
     const [isDragging, setIsDragging] = useState(false);
     const [startX, setStartX] = useState(0);
     const [scrollLeft, setScrollLeft] = useState(0);
-
-    // (DeckPosition 관련 코드는 이제 불필요할 수 있으나 유지는 해둠)
-    const deckRef = useRef<HTMLDivElement>(null);
 
     // 초기 카드 배분 및 이미지 프리로딩
     useEffect(() => {
@@ -61,24 +59,23 @@ const BattleScreen: React.FC = () => {
         }
     }, [round]);
 
+
+
     const drawCardSequence = async () => {
         // 1. 데이터 생성
         const newCard = getRandomCard();
         const newOppCard = getRandomCard();
 
-        // 2. 덱 위치에 카드 생성 (Drawing State)
+        // 2. 덱 위치에 카드 생성 (Drawing State) - 중앙에 등장
         setDrawingCard(newCard);
-        setDrawingOppCard(newOppCard);
 
-        // 3. 짧은 딜레이 후 핸드로 이동 (State Transfer)
-        // Framer Motion이 layoutId가 같은 컴포넌트 간의 위치 변화를 감지하고 애니메이션 처리함
+        // 3. 유저가 카드를 확인하도록 잠시 대기 (800ms) 후 핸드로 이동 ("부메랑" 효과처럼 날아감)
         setTimeout(() => {
             setPlayerHand(prev => [...prev, newCard]);
             setOpponentHand(prev => [...prev, newOppCard]);
 
-            // Drawing State 초기화 (핸드에 렌더링되는 즉시 제거해야 끊김 없음)
+            // Drawing State 초기화 -> 이때 layoutId를 통해 핸드 위치로 날아가는 애니메이션 발생
             setDrawingCard(null);
-            setDrawingOppCard(null);
 
             // [NEW] 스크롤을 오른쪽 끝으로 이동하여 새로 받은 카드를 보여줌
             setTimeout(() => {
@@ -89,7 +86,7 @@ const BattleScreen: React.FC = () => {
                     });
                 }
             }, 100);
-        }, 100); // 렌더링 타이밍 확보를 위한 최소 딜레이
+        }, 800);
     };
 
     // 마우스 드래그 스크롤 핸들러
@@ -155,16 +152,23 @@ const BattleScreen: React.FC = () => {
     };
 
     const resolveBattle = (pCard: Card, oCard: Card) => {
-        // 데미지 계산 및 결과 처리 로직 (기존과 동일하되 인자 직접 받음)
-        // 상대 카드 속성 등 복잡한 로직이 있다면 여기서 계산
-        let pDamage = oCard.attack;
-        let oDamage = pCard.attack; // 플레이어가 상대에게 주는 데미지
+        // 상성 계산 (1.5배)
+        // 플레이어 공격 시 상성 (Player -> Opponent)
+        const pMultiplier = getDamageMultiplier(pCard.type || 'normal', oCard.type || 'normal');
+        // 상대 공격 시 상성 (Opponent -> Player)
+        const oMultiplier = getDamageMultiplier(oCard.type || 'normal', pCard.type || 'normal');
 
-        // 간단한 상성 로직 (예시)
-        if (pCard.type === 'fire' && oCard.type === 'grass') oDamage *= 1.5;
-        if (oCard.type === 'fire' && pCard.type === 'grass') pDamage *= 1.5;
+        // 데미지 적용
+        const oDamage = Math.floor(pCard.attack * pMultiplier); // 상대가 받는 데미지
+        const pDamage = Math.floor(oCard.attack * oMultiplier); // 플레이어가 받는 데미지
 
-        let msg = `당신은 ${Math.floor(oDamage)} 데미지를 주었고, ${Math.floor(pDamage)} 데미지를 받았습니다!`;
+        let msg = '';
+
+        // 효과 메시지 추가
+        if (pMultiplier > 1) msg += `효과가 굉장했다! (${pCard.type} -> ${oCard.type}) `;
+        if (oMultiplier > 1) msg += `상대의 공격이 매서웠다! (${oCard.type} -> ${pCard.type}) `;
+
+        msg += `\n당신: -${pDamage} HP | 상대: -${oDamage} HP`;
 
         setPlayerHp(prev => Math.max(0, prev - pDamage));
         setOpponentHp(prev => Math.max(0, prev - oDamage));
@@ -195,7 +199,7 @@ const BattleScreen: React.FC = () => {
                     setTurnIndicator('player');
                 }, 1000);
             }
-        }, 1000);
+        }, 2500); // 결과 및 상성 메시지를 읽을 시간을 위해 대기 시간 증가
     };
 
     const finishGame = (winner: 'player' | 'opponent' | 'draw') => {
@@ -232,7 +236,31 @@ const BattleScreen: React.FC = () => {
     };
 
     return (
-        <div className="relative flex h-full w-full flex-col max-w-md mx-auto shadow-2xl overflow-hidden bg-background-light dark:bg-background-dark">
+        <div className="relative flex h-full w-full flex-col max-w-md mx-auto shadow-2xl overflow-hidden bg-background-light dark:bg-background-dark text-white font-sans">
+            <style>{`
+                .text-shadow { text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8); }
+                .vs-circle {
+                    background: radial-gradient(circle, #facc15 0%, #a16207 70%, #000000 100%);
+                    box-shadow: 0 0 30px rgba(250, 204, 21, 0.6);
+                }
+                .card-p1-field {
+                    box-shadow: 0 0 15px rgba(74, 222, 128, 0.5), inset 0 0 10px rgba(74, 222, 128, 0.3);
+                    border: 2px solid #4ade80;
+                }
+                .card-p2-field {
+                    box-shadow: 0 0 15px rgba(168, 85, 247, 0.5), inset 0 0 10px rgba(168, 85, 247, 0.3);
+                    border: 2px solid #a855f7;
+                }
+                .pixel-corners {
+                     clip-path: polygon(
+                        0px 6px, 6px 6px, 6px 0px, 
+                        calc(100% - 6px) 0px, calc(100% - 6px) 6px, 100% 6px, 
+                        100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 100%, 
+                        6px 100%, 6px calc(100% - 6px), 0px calc(100% - 6px)
+                    );
+                }
+            `}</style>
+
             {renderGameOver()}
 
             {/* Clash Scene Overlay */}
@@ -247,312 +275,269 @@ const BattleScreen: React.FC = () => {
                     onComplete={handleClashComplete}
                 />
             )}
-            {battleResultMessage && (
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 w-full px-4">
-                    <div className="bg-black/70 backdrop-blur border border-white/20 text-white text-center py-4 rounded-xl shadow-2xl animate-pulse">
-                        <p className="text-xl font-bold text-primary">{battleResultMessage}</p>
-                    </div>
-                </div>
-            )}
 
-            {/* Top Bar / Opponent Info */}
-            <div className="relative z-10 w-full p-4 pb-2 bg-gradient-to-b from-black/60 to-transparent">
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3 flex-1">
-                        <div className="relative">
-                            <div
-                                className="size-12 rounded-full border-2 border-primary bg-cover bg-center"
-                                style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuC84LtWSasHfQUpW2OrIxyxcP14Mq0XELtaVXDZRS5dqpMCSrUYWY8l27b5Y9MFvjw8icteRm1v_khIHNvXU7WBKjPnAI9HtrcCnag8kloyShfcQAZg3TIAQM6BAyx73fm6xY-FXfCzBKaL5EaP1UjVtvHj_M-57bVnO9T4AYbJ1-g1QjWsog9ZjYaYH1eUGZV9rlPU45knrXFeZQvX6br4BBt60jtq3gVvuBMw1lcY2shFcnJx93FbgVTqFixLqcE2HbCOsayPN4Xe')" }}
-                            ></div>
+            {/* Battle Result Message Overlay */}
+            <AnimatePresence>
+                {battleResultMessage && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 1.1 }}
+                        className="fixed inset-0 z-[110] flex items-center justify-center p-6 pointer-events-none"
+                    >
+                        <div className="bg-black/80 backdrop-blur-xl border-2 border-primary/50 text-white text-center py-6 px-8 rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.8)] max-w-xs">
+                            <p className="text-2xl font-display font-black text-primary italic uppercase tracking-tighter mb-2">BATTLE RESULT</p>
+                            <p className="text-sm font-bold opacity-90 leading-relaxed text-shadow">{battleResultMessage}</p>
                         </div>
-                        <div className="flex flex-col w-full max-w-[140px]">
-                            <div className="flex justify-between items-end mb-1">
-                                <h2 className="text-white text-base tracking-wide leading-tight">트레이너 레드</h2>
-                                <span className="text-white text-[10px] font-mono opacity-80">{opponentHp}/100</span>
-                            </div>
-                            <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden border border-white/10">
-                                <div
-                                    className="h-full bg-red-500 rounded-full transition-all duration-500"
-                                    style={{ width: `${Math.max(0, opponentHp)}%` }}
-                                ></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="text-white text-xs font-mono bg-black/40 px-2 py-1 rounded">
-                        Round {round}/{maxRounds}
-                    </div>
-                </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-                {/* Opponent Hand */}
-                <div className="flex justify-center gap-1.5 w-full perspective-[500px] h-14 items-center">
-                    <AnimatePresence>
-                        {opponentHand.map((card, idx) => (
-                            <motion.div
-                                key={card.id}
-                                layoutId={`opp-${card.id}`}
-                                initial={{ opacity: 0, y: -20, rotate: -10 }}
-                                animate={{
-                                    opacity: 1,
-                                    y: Math.abs(idx - opponentHand.length / 2) * 2,
-                                    rotate: (idx - opponentHand.length / 2) * 5
-                                }}
-                                exit={{ opacity: 0, scale: 0 }}
-                                className="w-8 h-12 rounded bg-gradient-to-br from-indigo-900 to-slate-900 border border-white/10 shadow-lg origin-bottom"
-                            />
-                        ))}
-                    </AnimatePresence>
+            {/* Background Texture */}
+            <div className="absolute inset-0 pointer-events-none opacity-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] z-0"></div>
+
+            {/* Top Bar - Minimalized */}
+            <div className="relative z-20 p-4 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent">
+                <div className="flex items-center gap-2">
+                    <span className="text-primary font-display text-xl tracking-tighter italic">ARENA</span>
+                    <div className="h-4 w-[1px] bg-white/20 mx-1"></div>
+                    <span className="text-xs text-gray-400 uppercase tracking-widest font-bold">Round {round}/{maxRounds}</span>
+                </div>
+                <div className="flex gap-2">
+                    {opponentHand.map((_, i) => (
+                        <div key={i} className="w-2 h-3 bg-gray-600 rounded-sm border border-white/10"></div>
+                    ))}
                 </div>
             </div>
 
-            {/* Battle Area (Center) */}
-            <div className="relative z-0 flex-1 flex flex-col items-center justify-center w-full py-4 gap-6">
-                <div className="relative w-full px-6 flex flex-col gap-6 items-center">
+            {/* Main Battle Field (Center Area) */}
+            <div className="flex-1 flex flex-col justify-center relative items-center px-4 w-full">
 
-                    {/* Opponent Slot */}
-                    <div className="w-32 h-44 rounded-xl border-2 border-dashed border-white/20 bg-black/20 flex items-center justify-center relative overflow-hidden transition-all">
+                {/* Deck Area (Center) */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+                    <div className="relative w-24 h-36 bg-slate-800 rounded-lg border border-white/10 shadow-xl flex items-center justify-center transform rotate-3 hover:rotate-0 transition-transform duration-300">
+                        <div className="absolute inset-0 border-2 border-white/5 rounded-lg m-1"></div>
+                        <span className="material-symbols-outlined text-white/10 text-4xl">style</span>
+                    </div>
+
+                    {/* Drawing Cards Overlay - Rendered OUTSIDE the transformed container */}
+                    <AnimatePresence>
+                        {drawingCard && (
+                            <motion.div
+                                layoutId={drawingCard.id}
+                                className="fixed inset-0 w-24 h-36 rounded-lg bg-slate-700 z-[100] border border-white/20 shadow-2xl pointer-events-none"
+                                style={{
+                                    top: '50%',
+                                    left: '50%',
+                                    x: '-50%',
+                                    y: '-50%'
+                                }}
+                                initial={{ scale: 0.5, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 1, opacity: 1 }} // Stay visible until it snaps to hand
+                                transition={{ duration: 0.5, ease: "easeInOut" }}
+                            >
+                                <div className="h-full w-full bg-cover bg-center rounded-lg opacity-100" style={{ backgroundImage: `url('${drawingCard.image}')` }} />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
+
+                {/* VS Circle */}
+                {
+                    (playerFieldCard || opponentFieldCard) && (
+                        <motion.div
+                            initial={{ scale: 0, opacity: 0, x: '-50%', y: '-50%' }}
+                            animate={{ scale: 1, opacity: 1, x: '-50%', y: '-50%' }}
+                            className="absolute z-30 top-1/2 left-1/2 pointer-events-none"
+                        >
+                            <div className="vs-circle w-16 h-16 rounded-full flex items-center justify-center border-2 border-black/50 backdrop-blur-sm relative">
+                                <span className="font-display italic font-black text-3xl text-black transform -skew-x-12 relative z-10">VS</span>
+                            </div>
+                        </motion.div>
+                    )
+                }
+
+                {/* Cards Container */}
+                <div className="flex w-full justify-between items-center h-[50vh] relative z-20">
+                    {/* Player Field Slot */}
+                    <div className="flex-1 h-full flex flex-col justify-center items-center pr-2">
+                        <AnimatePresence mode='wait'>
+                            {playerFieldCard ? (
+                                <motion.div
+                                    key={playerFieldCard.id}
+                                    layoutId={playerFieldCard.id}
+                                    className="card-p1-field relative rounded-xl overflow-hidden bg-gray-900 h-[65%] w-full max-w-[160px] shadow-2xl"
+                                >
+                                    <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url('${playerFieldCard.image}')` }}>
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-90"></div>
+                                    </div>
+                                    <div className="absolute bottom-0 left-0 w-full p-2 flex flex-col items-center text-center">
+                                        <h2 className="font-display text-lg text-white text-shadow leading-none mb-1">{playerFieldCard.name}</h2>
+                                        <div className="grid grid-cols-2 gap-1 mt-1 w-full">
+                                            <div className="bg-black/60 rounded p-1 text-center">
+                                                <div className="text-[8px] text-gray-400 font-bold">HP</div>
+                                                <div className="text-xs font-bold text-green-400">{playerFieldCard.hp}</div>
+                                            </div>
+                                            <div className="bg-black/60 rounded p-1 text-center">
+                                                <div className="text-[8px] text-gray-400 font-bold">ATK</div>
+                                                <div className="text-xs font-bold text-yellow-400">{playerFieldCard.attack}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            ) : (
+                                <div className="h-[65%] w-full max-w-[160px] rounded-xl border-2 border-dashed border-white/10 bg-white/5 flex items-center justify-center">
+                                    <span className="text-[10px] text-white/20 uppercase tracking-widest font-bold">Your Selection</span>
+                                </div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+
+                    {/* Opponent Field Slot */}
+                    <div className="flex-1 h-full flex flex-col justify-center items-center pl-2">
                         <AnimatePresence mode='wait'>
                             {opponentFieldCard ? (
                                 <motion.div
                                     key="opp-field"
-                                    initial={{ opacity: 0, y: -20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0 }}
-                                    className="absolute inset-0"
+                                    initial={{ opacity: 0, x: 50 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    className="card-p2-field relative rounded-xl overflow-hidden bg-gray-900 h-[65%] w-full max-w-[160px] shadow-2xl"
                                 >
-                                    <div
-                                        className="absolute inset-0 bg-cover bg-center animate-pulse"
-                                        style={{ backgroundImage: `url('${opponentFieldCard.image}')` }}
-                                    >
-                                        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/60"></div>
+                                    <div className="absolute inset-0 bg-cover bg-center filter grayscale-[30%]" style={{ backgroundImage: `url('${opponentFieldCard.image}')` }}>
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-90"></div>
                                     </div>
-                                    <div className="absolute bottom-2 left-0 w-full flex flex-col items-center z-10 px-1">
-                                        <span className="text-white font-bold text-sm shadow-black drop-shadow-md truncate w-full text-center mb-1">{opponentFieldCard.name}</span>
-                                        <div className="flex justify-center items-center gap-1 w-full">
-                                            <div className="flex items-center gap-0.5 bg-red-900/80 px-1.5 py-0.5 rounded border border-red-500/50 backdrop-blur-sm">
-                                                <span className="material-symbols-outlined text-red-500 text-[10px]">favorite</span>
-                                                <span className="text-white text-[10px] font-bold">{opponentFieldCard.hp}</span>
+                                    <div className="absolute bottom-0 left-0 w-full p-2 flex flex-col items-center text-center">
+                                        <h2 className="font-display text-lg text-white text-shadow leading-none mb-1">{opponentFieldCard.name}</h2>
+                                        <div className="grid grid-cols-2 gap-1 mt-1 w-full">
+                                            <div className="bg-black/60 rounded p-1 text-center">
+                                                <div className="text-[8px] text-gray-400 font-bold">HP</div>
+                                                <div className="text-xs font-bold text-purple-400">{opponentFieldCard.hp}</div>
                                             </div>
-                                            <div className="flex items-center gap-0.5 bg-yellow-900/80 px-1.5 py-0.5 rounded border border-yellow-500/50 backdrop-blur-sm">
-                                                <span className="material-symbols-outlined text-yellow-500 text-[10px]">flash_on</span>
-                                                <span className="text-white text-[10px] font-bold">{opponentFieldCard.attack}</span>
+                                            <div className="bg-black/60 rounded p-1 text-center">
+                                                <div className="text-[8px] text-gray-400 font-bold">ATK</div>
+                                                <div className="text-xs font-bold text-red-400">{opponentFieldCard.attack}</div>
                                             </div>
                                         </div>
                                     </div>
                                 </motion.div>
                             ) : (
-                                <motion.div
-                                    key="opp-empty"
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    className="flex flex-col items-center justify-center w-full h-full"
-                                >
-                                    <span className="material-symbols-outlined text-white/20 text-4xl">swords</span>
-                                    <div className="absolute -top-3 -right-3 bg-slate-800 border border-white/10 rounded-full p-1.5 shadow-lg">
-                                        <span className="material-symbols-outlined text-purple-400 text-sm block">verified_user</span>
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-
-                    {/* Deck Area (Moved to Right Side) */}
-                    <div
-                        ref={deckRef}
-                        className="absolute top-1/2 right-2 -translate-y-1/2 z-20 flex items-center justify-center transform mr-2"
-                    >
-                        {/* Drawing Card (Player) - 덱에서 생성되어 핸드로 날아갈 임시 카드 */}
-                        <AnimatePresence>
-                            {drawingCard && (
-                                <motion.div
-                                    layoutId={drawingCard.id}
-                                    className="absolute w-32 h-48 rounded-xl bg-card-surface border border-white/10 overflow-hidden shadow-2xl z-50"
-                                    initial={{ scale: 0.2, opacity: 0 }}
-                                    animate={{ scale: 0.2, opacity: 1 }} // 덱 사이즈(작게)에서 시작. 핸드로 가면서 scale: 1됨
-                                    exit={{ opacity: 1 }} // 사라질 때 fade out 하지 않음 (핸드 카드로 즉시 대체됨)
-                                    transition={{ duration: 0 }}
-                                >
-                                    <div
-                                        className="h-28 w-full bg-cover bg-center"
-                                        style={{ backgroundImage: `url('${drawingCard.image}')` }}
-                                    />
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-
-                        {/* Drawing Card (Opponent) */}
-                        <AnimatePresence>
-                            {drawingOppCard && (
-                                <motion.div
-                                    layoutId={`opp-${drawingOppCard.id}`}
-                                    className="absolute w-8 h-12 rounded bg-gradient-to-br from-indigo-900 to-slate-900 border border-white/10 shadow-lg z-50"
-                                    initial={{ scale: 0.5, opacity: 0 }}
-                                    animate={{ scale: 1, opacity: 1 }}
-                                    exit={{ opacity: 1 }}
-                                    transition={{ duration: 0 }}
-                                />
-                            )}
-                        </AnimatePresence>
-
-                        <div className="relative w-20 h-28 bg-gradient-to-br from-slate-700 to-slate-900 rounded-lg border-2 border-white/20 shadow-xl flex items-center justify-center cursor-pointer active:scale-95 transition-transform rotate-6 hover:rotate-0 hover:scale-105">
-                            {/* Deck Texture */}
-                            <div className="w-14 h-20 border border-white/10 rounded flex items-center justify-center">
-                                <span className="material-symbols-outlined text-primary/50 text-3xl">style</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Player Slot */}
-                    <div className="w-32 h-44 rounded-xl border-2 border-primary/30 bg-primary/5 flex items-center justify-center relative shadow-[0_0_15px_rgba(249,245,6,0.1)] overflow-hidden">
-                        <AnimatePresence mode='wait'>
-                            {playerFieldCard ? (
-                                <motion.div
-                                    key="player-field"
-                                    layoutId={playerFieldCard.id} // Hand에서 Field로 자연스러운 이동 (Shared Layout)
-                                    className="absolute inset-0"
-                                >
-                                    <div
-                                        className="absolute inset-0 bg-cover bg-center"
-                                        style={{ backgroundImage: `url('${playerFieldCard.image}')` }}
-                                    >
-                                        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/60"></div>
-                                    </div>
-                                    <div className="absolute bottom-2 left-0 w-full flex flex-col items-center z-10 px-1">
-                                        <span className="text-white font-bold text-sm shadow-black drop-shadow-md truncate w-full text-center mb-1">{playerFieldCard.name}</span>
-                                        <div className="flex justify-center items-center gap-1 w-full">
-                                            <div className="flex items-center gap-0.5 bg-red-900/80 px-1.5 py-0.5 rounded border border-red-500/50 backdrop-blur-sm">
-                                                <span className="material-symbols-outlined text-red-500 text-[10px]">favorite</span>
-                                                <span className="text-white text-[10px] font-bold">{playerFieldCard.hp}</span>
-                                            </div>
-                                            <div className="flex items-center gap-0.5 bg-yellow-900/80 px-1.5 py-0.5 rounded border border-yellow-500/50 backdrop-blur-sm">
-                                                <span className="material-symbols-outlined text-yellow-500 text-[10px]">flash_on</span>
-                                                <span className="text-white text-[10px] font-bold">{playerFieldCard.attack}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            ) : (
-                                <motion.p
-                                    key="player-empty"
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    className="text-primary/40 text-sm font-heading tracking-widest text-center leading-tight"
-                                >
-                                    배틀<br />구역
-                                </motion.p>
+                                <div className="h-[65%] w-full max-w-[160px] rounded-xl border-2 border-dashed border-white/10 bg-white/5 flex items-center justify-center">
+                                    <span className="text-[10px] text-white/20 uppercase tracking-widest font-bold">Enemy Ready</span>
+                                </div>
                             )}
                         </AnimatePresence>
                     </div>
                 </div>
+            </div >
 
-                {/* Turn Indicator */}
-                <div className={`absolute top-[45%] right-4 flex flex-col items-center gap-1 ${turnIndicator === 'player' ? 'animate-bounce opacity-100' : 'opacity-0'}`}>
-                    <span className="text-[10px] text-white/60 font-bold uppercase tracking-widest">당신 차례</span>
-                    <span className="material-symbols-outlined text-primary text-xl">keyboard_double_arrow_down</span>
-                </div>
-            </div>
+            {/* Bottom Panel (User Hand & Controls) */}
+            < div className="mt-auto bg-gradient-to-t from-black via-black/90 to-transparent px-4 pb-6 pt-12 relative z-20" >
 
-            {/* Player Area (Bottom) */}
-            <div className="relative z-20 w-full flex flex-col justify-end pb-6 pt-12 bg-gradient-to-t from-[#15150a] via-[#15150a]/90 to-transparent">
-
-                {/* Battle Button */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 z-30">
-                    <button
-                        onClick={handleBattleStart}
-                        disabled={!selectedCardId || isBattling}
-                        className={`flex items-center gap-2 text-black text-xl px-8 py-3 rounded-full shadow-[0_0_20px_rgba(249,245,6,0.4)] transition-all transform
-                            ${selectedCardId && !isBattling ? 'bg-primary hover:scale-105 hover:bg-yellow-300 active:scale-95 cursor-pointer' : 'bg-gray-600 cursor-not-allowed opacity-50'}
-                        `}
-                    >
-                        <span className="material-symbols-outlined">swords</span>
-                        {isBattling ? '배틀 중...' : '배틀!'}
-                    </button>
-                </div>
-
-                {/* Stats Row */}
-                <div className="flex justify-between items-end px-4 mb-2">
-                    <div className="flex flex-col">
-                        <span className="text-white text-xs font-bold uppercase tracking-widest opacity-60">보유 카드</span>
-                        <span className="text-primary text-sm font-bold">카드 {playerHand.length}장</span>
-                    </div>
-                    {/* Player HP Bar */}
-                    <div className="flex flex-col items-end w-32">
-                        <div className="flex justify-between w-full text-xs mb-1">
-                            <span className="text-green-400 font-bold">HP</span>
-                            <span className="text-white font-mono">{playerHp}/500</span>
-                        </div>
-                        <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden border border-white/10">
-                            <div
-                                className="h-full bg-green-500 rounded-full transition-all duration-300"
-                                style={{ width: `${(playerHp / 500) * 100}%` }}
-                            ></div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Card Hand with AnimatePresence */}
-                <div
+                {/* Hand Selection */}
+                < div
                     ref={scrollContainerRef}
                     onMouseDown={handleMouseDown}
                     onMouseLeave={handleMouseLeave}
                     onMouseUp={handleMouseUp}
                     onMouseMove={handleMouseMove}
-                    className="flex overflow-x-auto gap-3 px-6 pb-4 pt-4 snap-x no-scrollbar items-end h-[240px] cursor-grab active:cursor-grabbing"
+                    className="flex overflow-x-auto gap-3 py-4 no-scrollbar snap-x h-[160px] items-end cursor-grab active:cursor-grabbing"
                 >
                     <AnimatePresence mode='popLayout'>
-                        {playerHand.map((card) => {
-                            return (
-                                <motion.div
-                                    key={card.id}
-                                    layoutId={card.id} // 덱에서부터 생성된 같은 ID의 카드와 연결됨
-                                    onClick={() => !isDragging && handleCardSelect(card.id)}
-                                    // initial/animate는 layoutId가 처리하므로 불필요하거나 최소화
-                                    initial={{ opacity: 0, scale: 0.8 }}
-                                    animate={{ opacity: 1, scale: 1, zIndex: selectedCardId === card.id ? 20 : 1 }}
-                                    exit={{ scale: 0, opacity: 0, y: 50 }}
-                                    transition={{
-                                        duration: 0.6,
-                                        type: "spring",
-                                        bounce: 0.5
-                                    }}
-                                    className={`shrink-0 w-32 h-48 rounded-xl bg-card-surface border overflow-hidden relative group transition-colors duration-300 snap-center cursor-pointer select-none
-                                        ${selectedCardId === card.id
-                                            ? 'border-primary shadow-[0_0_15px_rgba(249,245,6,0.5)]'
-                                            : 'border-white/10 hover:shadow-xl'
-                                        }
-                                    `}
-                                    // 선택 시 위로 올라가는 효과는 transform 대신 margin/padding 혹은 y offset 사용해야 layout 깨짐 방지
-                                    // 여기서는 선택된 상태를 animate prop의 y값으로 제어
-                                    style={{ y: selectedCardId === card.id ? -24 : 0 }}
-                                >
-                                    <div
-                                        className="h-28 w-full bg-cover bg-center pointer-events-none"
-                                        style={{ backgroundImage: `url('${card.image}')` }}
-                                    >
-                                        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent to-card-surface"></div>
-                                    </div>
-                                    <div className="p-2 pt-1 relative pointer-events-none flex flex-col items-center">
-                                        <h3 className={`text-sm tracking-wide mb-1 truncate text-center w-full ${selectedCardId === card.id ? 'text-primary font-bold' : 'text-white'}`}>
-                                            {card.name}
-                                        </h3>
-                                        <div className="flex justify-center items-center gap-2 w-full mb-1">
-                                            <div className="flex items-center gap-0.5 bg-red-900/50 px-1.5 py-0.5 rounded border border-red-500/30">
-                                                <span className="material-symbols-outlined text-red-500 text-[10px]">favorite</span>
-                                                <span className="text-white text-[10px] font-bold">{card.hp}</span>
-                                            </div>
-                                            <div className="flex items-center gap-0.5 bg-yellow-900/50 px-1.5 py-0.5 rounded border border-yellow-500/30">
-                                                <span className="material-symbols-outlined text-yellow-500 text-[10px]">flash_on</span>
-                                                <span className="text-white text-[10px] font-bold">{card.attack}</span>
-                                            </div>
+                        {playerHand.map((card) => (
+                            <motion.div
+                                key={card.id}
+                                layoutId={card.id}
+                                onClick={() => !isDragging && handleCardSelect(card.id)}
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{
+                                    opacity: 1,
+                                    scale: 1,
+                                    y: selectedCardId === card.id ? -15 : 0,
+                                    zIndex: selectedCardId === card.id ? 20 : 1
+                                }}
+                                exit={{ scale: 0, opacity: 0, y: 50 }}
+                                className={`shrink-0 w-24 h-36 rounded-lg overflow-hidden border transition-all duration-300 snap-center
+                                    ${selectedCardId === card.id ? 'border-primary shadow-[0_0_15px_rgba(234,179,8,0.5)] bg-slate-800' : 'border-white/10 bg-slate-900'}
+                                `}
+                            >
+                                <div className="h-[60%] w-full bg-cover bg-center" style={{ backgroundImage: `url('${card.image}')` }}></div>
+                                <div className="p-1.5 text-center flex flex-col justify-end h-[40%]">
+                                    <p className="text-[10px] font-bold truncate leading-none mb-1 text-white/90">{card.name}</p>
+                                    <div className="flex justify-center gap-1.5 pt-1 border-t border-white/10">
+                                        <div className="flex items-center space-x-0.5 bg-black/40 px-1 rounded">
+                                            <span className="text-[6px] text-gray-400">HP</span>
+                                            <span className="text-[8px] text-green-400 font-bold">{card.hp}</span>
                                         </div>
-                                        <p className="text-[9px] text-gray-400 mt-0.5 leading-tight line-clamp-1 text-center w-full">{card.description}</p>
+                                        <div className="flex items-center space-x-0.5 bg-black/40 px-1 rounded">
+                                            <span className="text-[6px] text-gray-400">ATK</span>
+                                            <span className="text-[8px] text-yellow-400 font-bold">{card.attack}</span>
+                                        </div>
                                     </div>
-                                </motion.div>
-                            );
-                        })}
+                                </div>
+                            </motion.div>
+                        ))}
                     </AnimatePresence>
-                </div>
-            </div>
-        </div>
+                </div >
+
+                {/* Status & Battle Button (HP Area) */}
+                < div className="mt-4" >
+                    <div className="text-center mb-4">
+                        <div className="inline-block bg-yellow-900/30 border border-yellow-500/20 rounded-full px-4 py-1 backdrop-blur-md">
+                            <span className="text-primary font-bold tracking-widest text-[10px] uppercase">
+                                {selectedCardId ? "Ready to Clash!" : "Select your Pokemon"}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="flex items-end justify-between space-x-2">
+                        {/* Player Stats */}
+                        <div className="flex-1 flex flex-col justify-end min-w-0">
+                            <div className="flex items-baseline mb-1">
+                                <span className="text-xl font-bold text-white">{playerHp}</span>
+                                <span className="text-[10px] text-gray-500 ml-1">/ 500</span>
+                            </div>
+                            <div className="h-4 w-full bg-gray-800 rounded-full overflow-hidden border border-gray-700">
+                                <div className="h-full bg-primary shadow-[0_0_10px_rgba(234,179,8,0.5)]" style={{ width: `${(playerHp / 500) * 100}%` }}></div>
+                            </div>
+                            <div className="flex items-center mt-1 space-x-1">
+                                <div className={`w-1.5 h-1.5 rounded-full ${turnIndicator === 'player' ? 'bg-primary animate-pulse' : 'bg-gray-600'}`}></div>
+                                <span className="text-[10px] text-gray-500 uppercase tracking-tighter">YOU</span>
+                            </div>
+                        </div>
+
+                        {/* Battle Button */}
+                        <div className="relative z-10 flex-shrink-0 px-2 flex flex-col items-center">
+                            <button
+                                onClick={handleBattleStart}
+                                disabled={!selectedCardId || isBattling}
+                                className={`bg-primary text-black font-display font-black text-xs px-6 py-2.5 pixel-corners shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 transition-all flex flex-col items-center leading-none min-w-[100px]
+                                    ${(!selectedCardId || isBattling) ? 'opacity-50 grayscale cursor-not-allowed shadow-none active:translate-y-0' : 'hover:bg-yellow-400'}
+                                `}
+                            >
+                                <span>BATTLE</span>
+                                <span className="text-[8px] font-sans font-bold mt-0.5 opacity-80">START!</span>
+                            </button>
+                        </div>
+
+                        {/* Opponent Stats */}
+                        <div className="flex-1 flex flex-col items-end justify-end min-w-0">
+                            <div className="flex items-baseline mb-1">
+                                <span className="text-xl font-bold text-white">{(opponentHp / 500) * 500}</span>
+                                <span className="text-[10px] text-gray-500 ml-1">/ 500</span>
+                            </div>
+                            <div className="h-4 w-full bg-gray-800 rounded-full overflow-hidden border border-gray-700">
+                                <div className="h-full bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)] float-right" style={{ width: `${(opponentHp / 500) * 100}%` }}></div>
+                            </div>
+                            <div className="flex items-center mt-1 space-x-1 justify-end">
+                                <span className="text-[10px] text-gray-500 uppercase tracking-tighter">ENEMY</span>
+                                <div className="w-1.5 h-1.5 rounded-full bg-red-600"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div >
+            </div >
+        </div >
     );
 };
 

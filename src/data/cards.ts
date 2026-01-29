@@ -66,10 +66,14 @@ export const ALL_CARDS: Card[] = [
 ];
 
 // 게임 시작 시 50장 중 랜덤하게 뽑아 쓸 수 있도록 내보냄
+import { POKEMON_TYPES } from './pokemonTypes';
+
+// 게임 시작 시 50장 중 랜덤하게 뽑아 쓸 수 있도록 내보냄
 export const getRandomCards = (count: number): Card[] => {
     const shuffled = [...ALL_CARDS].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, count).map(card => ({
         ...card,
+        type: POKEMON_TYPES[card.id] || 'normal', // 타입 주입
         id: `${card.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` // 고유 ID 생성
     }));
 };
@@ -78,6 +82,7 @@ export const getRandomCard = (): Card => {
     const random = ALL_CARDS[Math.floor(Math.random() * ALL_CARDS.length)];
     return {
         ...random,
+        type: POKEMON_TYPES[random.id] || 'normal', // 타입 주입
         id: `${random.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     };
 };

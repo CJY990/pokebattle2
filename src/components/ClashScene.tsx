@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { Card } from '../types';
 
 interface ClashSceneProps {
     playerCard: Card;
     opponentCard: Card;
     playerHp: number;
-    playerMaxHp: number; // For percentage calc
+    playerMaxHp: number;
     opponentHp: number;
     opponentMaxHp: number;
     onComplete: () => void;
@@ -16,19 +16,19 @@ const ClashScene: React.FC<ClashSceneProps> = ({
     playerCard,
     opponentCard,
     playerHp,
-    playerMaxHp = 100, // Default assume 100 if not passed, but better passed
+    playerMaxHp,
     opponentHp,
-    opponentMaxHp = 100,
+    opponentMaxHp,
     onComplete
 }) => {
-    // 애니메이션 단계 관리
-    // 0: 등장, 1: 충돌/데미지 표시, 2: 종료 대기
-    const [phase, setPhase] = useState(0);
+    const [phase, setPhase] = useState(0); // 0: Preview, 1: Attack/Impact, 2: Post-Impact
 
     useEffect(() => {
-        // 1초 뒤 충돌/데미지 페이즈
-        const t1 = setTimeout(() => setPhase(1), 800);
-        // 4초 뒤 종료 콜백
+        // Timeline:
+        // 0s: Preview (Side by side)
+        // 1.5s: Impact (Shake + Damage)
+        // 4s: Complete
+        const t1 = setTimeout(() => setPhase(1), 1500);
         const t2 = setTimeout(() => onComplete(), 4000);
 
         return () => {
@@ -38,196 +38,244 @@ const ClashScene: React.FC<ClashSceneProps> = ({
     }, [onComplete]);
 
     return (
-        <div className="fixed inset-0 z-[100] bg-[#23220f] font-sans overflow-hidden flex flex-col">
-            {/* Styles defined locally for specific 3d transforms */}
+        <div className="fixed inset-0 z-[100] bg-background-light font-sans overflow-hidden flex flex-col text-white">
             <style>{`
-                .clash-perspective {
-                    perspective: 800px;
+                .text-shadow {
+                    text-shadow: 2px 2px 8px rgba(0, 0, 0, 1);
                 }
-                .card-left {
-                    transform: rotate3d(1, -0.5, 0, 15deg) scale(1.05);
-                    box-shadow: 0 0 30px rgba(249, 245, 6, 0.3);
-                    z-index: 20;
+                .vs-circle {
+                    background: radial-gradient(circle, #facc15 0%, #a16207 70%, #000000 100%);
+                    box-shadow: 0 0 50px rgba(250, 204, 21, 0.4);
                 }
-                .card-right {
-                    transform: rotate3d(1, 0.5, 0, 15deg) scale(0.95);
-                    filter: brightness(0.8);
-                    z-index: 10;
+                .card-container {
+                    perspective: 1200px;
                 }
-                 /* Animation Keyframes for entry */
-                @keyframes slideInLeft {
-                    from { transform: translateX(-100%) rotate3d(0, 1, 0, 60deg); opacity: 0; }
-                    to { transform: rotate3d(1, -0.5, 0, 15deg) scale(1.05); opacity: 1; }
+                .card-p1 {
+                    box-shadow: 0 0 30px rgba(74, 222, 128, 0.3), inset 0 0 15px rgba(74, 222, 128, 0.2);
+                    border: 2px solid #4ade80;
                 }
-                @keyframes slideInRight {
-                    from { transform: translateX(100%) rotate3d(0, -1, 0, 60deg); opacity: 0; }
-                    to { transform: rotate3d(1, 0.5, 0, 15deg) scale(0.95); opacity: 1; }
+                .card-p2 {
+                    box-shadow: 0 0 30px rgba(168, 85, 247, 0.3), inset 0 0 15px rgba(168, 85, 247, 0.2);
+                    border: 2px solid #a855f7;
                 }
-                .animate-slide-in-left {
-                    animation: slideInLeft 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+                .pixel-corners {
+                     clip-path: polygon(
+                        0px 6px, 6px 6px, 6px 0px, 
+                        calc(100% - 6px) 0px, calc(100% - 6px) 6px, 100% 6px, 
+                        100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 100%, 
+                        6px 100%, 6px calc(100% - 6px), 0px calc(100% - 6px)
+                    );
                 }
-                .animate-slide-in-right {
-                    animation: slideInRight 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+                @keyframes float {
+                    0% { transform: translateY(0px); }
+                    50% { transform: translateY(-10px); }
+                    100% { transform: translateY(0px); }
+                }
+                .animate-float {
+                    animation: float 3s ease-in-out infinite;
                 }
             `}</style>
 
-            {/* Top HUD */}
-            <header className="relative z-50 flex items-center justify-between p-6">
-                <div className="flex items-center justify-center size-12 rounded-full bg-black/20 text-white backdrop-blur-md">
-                    <span className="material-symbols-outlined text-[28px]">pause</span>
-                </div>
-                <div className="flex flex-col items-center justify-center">
-                    <div className="flex items-center gap-2 bg-black/30 px-4 py-1.5 rounded-full backdrop-blur-md border border-white/10">
-                        <span className="material-symbols-outlined text-primary text-sm">schedule</span>
-                        <span className="text-white text-sm font-bold tracking-widest">BATTLE PHASE</span>
-                    </div>
-                </div>
-                <div className="flex items-center justify-center size-12 rounded-full bg-black/20 text-white backdrop-blur-md">
-                    <span className="material-symbols-outlined text-[28px]">settings</span>
-                </div>
-            </header>
+            {/* Cinematic Background */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black via-slate-900/80 to-black"></div>
+            <div className="absolute inset-0 pointer-events-none opacity-20 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
 
-            {/* Main Battle Area */}
-            <main className="flex-1 relative flex flex-col items-center justify-center w-full max-w-md mx-auto clash-perspective px-4 py-6">
-                {/* Ambient Aura Background */}
-                <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary/20 rounded-full blur-[100px] opacity-50 mix-blend-screen"></div>
-                    <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-600/20 rounded-full blur-[80px] mix-blend-color-dodge animate-pulse"></div>
-                    <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-red-600/20 rounded-full blur-[80px] mix-blend-color-dodge animate-pulse" style={{ animationDelay: '1s' }}></div>
-                </div>
+            {/* Dynamic Light Rays */}
+            <div className="absolute inset-0 pointer-events-none overflow-hidden origin-center rotate-45">
+                <div className="absolute top-0 left-1/4 w-1/2 h-[200%] bg-gradient-to-r from-transparent via-white/5 to-transparent blur-3xl opacity-30"></div>
+            </div>
 
-                {/* Clash Container */}
-                <div className="relative w-full aspect-[4/5] flex items-center justify-center z-10">
+            <div className="w-full max-w-[95vw] mx-auto h-screen flex flex-col relative z-10 px-6 py-8">
+                {/* Battle Area */}
+                <div className="flex-1 flex flex-col justify-center relative items-center w-full">
 
-                    {/* VS Indicator */}
-                    <motion.div
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 0.5, type: 'spring' }}
-                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 flex flex-col items-center"
-                    >
-                        <div className="relative size-20 flex items-center justify-center">
-                            <div className="absolute inset-0 bg-primary rounded-full blur-xl opacity-80 animate-pulse"></div>
-                            <div className="relative bg-black border-4 border-primary rounded-full size-16 flex items-center justify-center shadow-[0_0_20px_rgba(249,245,6,0.6)]">
-                                <span className="text-primary font-bold text-2xl italic tracking-tighter pr-0.5">VS</span>
+                    {/* VS Circle - Absolute Center independent of grid */}
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
+                        <motion.div
+                            initial={{ scale: 0, opacity: 0, rotate: -180 }}
+                            animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                            transition={{ type: 'spring', damping: 12, stiffness: 200 }}
+                        >
+                            <div className="vs-circle w-40 h-40 rounded-full flex items-center justify-center border-4 border-black relative overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.8)]">
+                                <motion.div
+                                    animate={{ opacity: [0.3, 0.6, 0.3] }}
+                                    transition={{ repeat: Infinity, duration: 2 }}
+                                    className="absolute inset-0 bg-white/20"
+                                />
+                                <span className="font-display italic font-black text-7xl text-black transform -skew-x-12 z-10 drop-shadow-md pr-2 pt-1">VS</span>
                             </div>
-                        </div>
-                    </motion.div>
-
-                    {/* Player 1 Card (Attacker) */}
-                    <div className="absolute left-0 w-[55%] h-[80%] card-left animate-slide-in-left">
-                        {/* Status Badge */}
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-40">
-                            <div className="bg-primary text-black text-sm font-bold px-4 py-1.5 rounded-full shadow-lg border-2 border-white flex items-center gap-1">
-                                <span className="material-symbols-outlined text-base font-bold">swords</span>
-                                <span>공격</span>
-                            </div>
-                        </div>
-                        {/* Card Body */}
-                        <div className="w-full h-full rounded-2xl overflow-hidden border-[3px] border-primary bg-gray-800 relative shadow-2xl">
-                            <div
-                                className="absolute inset-0 bg-cover bg-center"
-                                style={{ backgroundImage: `url('${playerCard.image}')` }}
-                            ></div>
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                            <div className="absolute bottom-0 left-0 right-0 p-4">
-                                <p className="text-white font-bold text-lg leading-none">{playerCard.name}</p>
-                                <p className="text-primary/80 text-xs mt-1">ATK {playerCard.attack}</p>
-                            </div>
-                        </div>
+                        </motion.div>
                     </div>
 
-                    {/* Player 2 Card (Defender) */}
-                    <div className="absolute right-0 w-[55%] h-[80%] card-right animate-slide-in-right">
-                        {/* Status Badge */}
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-40">
-                            <div className="bg-gray-700 text-gray-300 text-sm font-bold px-4 py-1.5 rounded-full shadow-lg border border-gray-500 flex items-center gap-1">
-                                <span className="material-symbols-outlined text-base">shield</span>
-                                <span>방어</span>
+                    {/* Cards Container */}
+                    <div className="flex w-full justify-center items-center gap-12 h-[65vh] px-4">
+                        {/* Player Card */}
+                        <motion.div
+                            initial={{ x: -200, opacity: 0, rotateY: -30 }}
+                            animate={{
+                                x: phase === 1 ? [0, 60, 0] : 0,
+                                opacity: 1,
+                                rotateY: 0,
+                                scale: phase === 1 ? 1.1 : 1,
+                                zIndex: phase === 1 ? 50 : 10
+                            }}
+                            className="flex-1 max-w-[600px] h-full flex flex-col justify-center card-container bg-transparent group"
+                        >
+                            <div className="card-p1 relative rounded-[2.5rem] overflow-hidden bg-gray-900 aspect-[2/3] w-full shadow-[0_0_60px_rgba(0,0,0,0.6)] border-2 animate-float transition-all duration-300">
+                                <div className="absolute inset-0 bg-cover bg-center transition-transform duration-700 hover:scale-110" style={{ backgroundImage: `url('${playerCard.image}')` }}>
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
+                                </div>
+                                <div className="absolute bottom-0 left-0 w-full p-6 flex flex-col items-center text-center z-10">
+                                    <h2 className="font-display text-4xl text-white text-shadow leading-none mb-3 italic font-black uppercase tracking-tighter">{playerCard.name}</h2>
+                                    <div className="grid grid-cols-2 gap-4 w-full px-2">
+                                        <div className="bg-black/80 backdrop-blur-md rounded-lg p-2 border border-white/10 text-center shadow-lg">
+                                            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">HP</div>
+                                            <div className="text-xl font-black text-green-400">{playerCard.hp}</div>
+                                        </div>
+                                        <div className="bg-black/80 backdrop-blur-md rounded-lg p-2 border border-white/10 text-center shadow-lg">
+                                            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">ATK</div>
+                                            <div className="text-xl font-black text-yellow-400">{playerCard.attack}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Flash effect on player card when attacking */}
+                                {phase === 1 && (
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: [0, 0.8, 0] }}
+                                        className="absolute inset-0 bg-primary z-40 mix-blend-overlay"
+                                    />
+                                )}
+                            </div>
+                        </motion.div>
+
+                        {/* Opponent Card */}
+                        <motion.div
+                            initial={{ x: 200, opacity: 0, rotateY: 30 }}
+                            animate={{
+                                x: phase === 1 ? [0, -40, 0] : 0,
+                                opacity: 1,
+                                rotateY: 0,
+                                scale: phase === 1 ? 1.1 : 1
+                            }}
+                            className="flex-1 max-w-[600px] h-full flex flex-col justify-center card-container bg-transparent group"
+                        >
+                            <div className={`card-p2 relative rounded-[2.5rem] overflow-hidden bg-gray-900 aspect-[2/3] w-full shadow-[0_0_60px_rgba(0,0,0,0.6)] border-2 ${phase === 1 ? 'animate-shake' : ''}`}>
+                                <div className="absolute inset-0 bg-cover bg-center grayscale-[20%] transition-transform duration-700 hover:scale-110" style={{ backgroundImage: `url('${opponentCard.image}')` }}>
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
+                                    <div className="absolute inset-0 bg-purple-900/10 mix-blend-overlay"></div>
+                                </div>
+                                <div className="absolute bottom-0 left-0 w-full p-6 flex flex-col items-center text-center z-10">
+                                    <h2 className="font-display text-4xl text-white text-shadow leading-none mb-3 italic font-black uppercase tracking-tighter">{opponentCard.name}</h2>
+                                    <div className="grid grid-cols-2 gap-4 w-full px-2">
+                                        <div className="bg-black/80 backdrop-blur-md rounded-lg p-2 border border-white/10 text-center order-2 shadow-lg">
+                                            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">HP</div>
+                                            <div className="text-xl font-black text-purple-400">{opponentCard.hp}</div>
+                                        </div>
+                                        <div className="bg-black/80 backdrop-blur-md rounded-lg p-2 border border-white/10 text-center order-1 shadow-lg">
+                                            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">ATK</div>
+                                            <div className="text-xl font-black text-red-500">{opponentCard.attack}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Impact Flash on opponent */}
+                                {phase === 1 && (
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: [0, 1, 0] }}
+                                        transition={{ duration: 0.2 }}
+                                        className="absolute inset-0 bg-white z-40"
+                                    />
+                                )}
+
+                                {/* Damage Floating Text */}
+                                <AnimatePresence>
+                                    {phase === 1 && (
+                                        <motion.div
+                                            initial={{ y: 0, opacity: 0, scale: 0.5 }}
+                                            animate={{ y: -80, opacity: 1, scale: 2 }}
+                                            exit={{ opacity: 0 }}
+                                            className="absolute top-1/2 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+                                        >
+                                            <span className="text-8xl font-black text-red-500 italic drop-shadow-[0_8px_0_rgba(0,0,0,1)]">-{playerCard.attack}</span>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </motion.div>
+                    </div>
+                </div>
+
+                {/* Bottom UI - Matching BattleScreen */}
+                <div className="mt-auto pb-10 relative z-20">
+                    <div className="text-center mb-8">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="inline-block bg-yellow-900/40 border border-yellow-500/30 rounded-full px-8 py-2.5 backdrop-blur-lg shadow-xl"
+                        >
+                            <span className="text-primary font-bold tracking-[0.2em] text-xs uppercase animate-pulse">
+                                {phase === 0 ? "LOCKING TARGETS..." : "CRITICAL IMPACT!"}
+                            </span>
+                        </motion.div>
+                    </div>
+
+                    <div className="flex items-end justify-between space-x-4">
+                        {/* Player Health */}
+                        <div className="flex-1 flex flex-col justify-end min-w-0">
+                            <div className="flex items-baseline mb-2">
+                                <span className="text-3xl font-display font-black text-white">{playerHp}</span>
+                                <span className="text-xs text-gray-500 ml-2 font-bold">/ {playerMaxHp}</span>
+                            </div>
+                            <div className="h-5 w-full bg-gray-950 rounded-full overflow-hidden relative border border-white/10 shadow-inner">
+                                <motion.div
+                                    initial={{ width: `${(playerHp / playerMaxHp) * 100}%` }}
+                                    animate={{ width: phase === 1 ? `${Math.max(0, (playerHp - opponentCard.attack) / playerMaxHp) * 100}%` : `${(playerHp / playerMaxHp) * 100}%` }}
+                                    className="absolute top-0 left-0 h-full bg-primary shadow-[0_0_20px_rgba(234,179,8,0.8)]"
+                                />
+                                <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-b from-white/20 via-transparent to-black/20"></div>
+                            </div>
+                            <div className="flex items-center mt-3 space-x-2">
+                                <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse shadow-[0_0_10px_rgba(234,179,8,1)]"></div>
+                                <span className="text-xs text-gray-400 font-black uppercase tracking-widest">PLAYER 1</span>
                             </div>
                         </div>
 
-                        {/* Damage Float Text (Shown in phase 1) */}
-                        {phase >= 1 && (
-                            <motion.div
-                                initial={{ scale: 0, opacity: 0, y: 20 }}
-                                animate={{ scale: 1.5, opacity: 1, y: 0 }}
-                                className="absolute top-1/4 -right-4 z-50"
-                            >
-                                <h1 className="text-6xl font-black text-primary drop-shadow-[0_4px_0_rgba(0,0,0,1)] italic tracking-tighter" style={{ textShadow: '0 0 20px rgba(249,245,6,0.8)' }}>
-                                    -{playerCard.attack}
-                                </h1>
-                            </motion.div>
-                        )}
+                        {/* Battle Action Indicator */}
+                        <div className="relative z-10 flex-shrink-0 px-2 flex flex-col items-center">
+                            <div className="bg-primary text-black font-display font-black text-sm px-6 py-3 pixel-corners shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center leading-none min-w-[120px] scale-110">
+                                <span>{phase === 0 ? "BATTLE" : "CLASH"}</span>
+                                <span className="text-[9px] font-sans font-black mt-1.5 opacity-70 tracking-tighter">IN PROGRESS</span>
+                            </div>
+                        </div>
 
-                        {/* Card Body */}
-                        <div className={`w-full h-full rounded-2xl overflow-hidden border-2 border-gray-600 bg-gray-800 relative shadow-xl ${phase >= 1 ? 'animate-[shake_0.5s_ease-in-out]' : ''}`}>
-                            <div className="absolute inset-0 bg-cover bg-center grayscale-[0.3]" style={{ backgroundImage: `url('${opponentCard.image}')` }}></div>
-                            {/* Hit Effect Overlay */}
-                            {phase === 1 && <div className="absolute inset-0 bg-white/30 mix-blend-overlay animate-pulse"></div>}
-
-                            <div className="absolute bottom-0 left-0 right-0 p-4 z-20">
-                                <p className="text-gray-300 font-bold text-lg leading-none">{opponentCard.name}</p>
-                                <p className="text-gray-500 text-xs mt-1">ATK {opponentCard.attack}</p>
+                        {/* Opponent Health */}
+                        <div className="flex-1 flex flex-col items-end justify-end min-w-0">
+                            <div className="flex items-baseline mb-2 justify-end">
+                                <span className="text-3xl font-display font-black text-white">{opponentHp}</span>
+                                <span className="text-xs text-gray-500 ml-2 font-bold">/ {opponentMaxHp}</span>
+                            </div>
+                            <div className="h-5 w-full bg-gray-950 rounded-full overflow-hidden relative border border-white/10 shadow-inner">
+                                <motion.div
+                                    initial={{ width: `${(opponentHp / opponentMaxHp) * 100}%` }}
+                                    animate={{ width: phase === 1 ? `${Math.max(0, (opponentHp - playerCard.attack) / opponentMaxHp) * 100}%` : `${(opponentHp / opponentMaxHp) * 100}%` }}
+                                    className="absolute top-0 right-0 h-full bg-red-600 shadow-[0_0_20px_rgba(220,38,38,0.8)]"
+                                />
+                                <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-b from-white/20 via-transparent to-black/20 text-right"></div>
+                            </div>
+                            <div className="flex items-center mt-3 space-x-2 justify-end">
+                                <span className="text-xs text-gray-400 font-black uppercase tracking-widest text-right">ENEMY ALPHA</span>
+                                <div className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse shadow-[0_0_10px_rgba(220,38,38,1)]"></div>
                             </div>
                         </div>
                     </div>
-
                 </div>
-
-                {/* Combat Log */}
-                <div className={`mt-4 z-20 transition-opacity duration-500 ${phase >= 1 ? 'opacity-100' : 'opacity-0'}`}>
-                    <div className="bg-gradient-to-r from-transparent via-primary/20 to-transparent px-8 py-2 rounded-lg border-y border-primary/30">
-                        <p className="text-primary text-xl font-bold tracking-widest text-center uppercase drop-shadow-md">
-                            BATTLE START! <span className="text-white text-sm ml-2 font-normal opacity-80">배틀 개시!</span>
-                        </p>
-                    </div>
-                </div>
-            </main>
-
-            {/* Bottom Stats Area */}
-            <section className="relative z-10 w-full bg-[#15150a]/90 backdrop-blur-lg border-t border-white/5 pb-8 pt-6 px-6 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-                <div className="max-w-md mx-auto flex gap-6">
-                    {/* Player 1 Stats */}
-                    <div className="flex-1 flex flex-col gap-2">
-                        <div className="flex justify-between items-end">
-                            <span className="text-primary font-bold text-lg">P1</span>
-                            <span className="text-white font-bold text-2xl">{playerHp} <span className="text-xs text-gray-400 font-normal">/ {playerMaxHp}</span></span>
-                        </div>
-                        <div className="h-3 w-full bg-gray-800 rounded-full overflow-hidden border border-white/10">
-                            <div
-                                className="h-full bg-gradient-to-r from-primary to-yellow-300 relative transition-all duration-500"
-                                style={{ width: `${(playerHp / playerMaxHp) * 100}%` }}
-                            >
-                                <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-                            </div>
-                        </div>
-                        <div className="flex gap-2 mt-1">
-                            <div className="size-2 rounded-full bg-primary shadow-[0_0_8px_#f9f506]"></div>
-                            <span className="text-gray-400 text-xs">Active Turn</span>
-                        </div>
-                    </div>
-
-                    {/* Player 2 Stats */}
-                    <div className="flex-1 flex flex-col gap-2 opacity-80">
-                        <div className="flex justify-between items-end flex-row-reverse">
-                            <span className="text-red-500 font-bold text-lg">P2</span>
-                            <span className="text-white font-bold text-2xl">{opponentHp} <span className="text-xs text-gray-400 font-normal">/ {opponentMaxHp}</span></span>
-                        </div>
-                        <div className="h-3 w-full bg-gray-800 rounded-full overflow-hidden border border-white/10 flex justify-end">
-                            <div
-                                className="h-full bg-red-600 transition-all duration-500"
-                                style={{ width: `${(opponentHp / opponentMaxHp) * 100}%` }}
-                            ></div>
-                        </div>
-                        <div className="flex gap-2 mt-1 justify-end">
-                            <span className="text-gray-500 text-xs">Waiting</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
+            </div>
         </div>
     );
 };
 
 export default ClashScene;
+

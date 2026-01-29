@@ -5,7 +5,7 @@ export interface Card {
   hp: number;
   attack: number;
   description: string;
-  type?: 'fire' | 'water' | 'grass' | 'electric' | 'dark'; // 속성 추가 가능
+  type?: string;
 }
 
 export interface PlayerState {
