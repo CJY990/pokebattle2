@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* HTML 내 style 태그 내용 */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.card-fan:hover {
+    transform: translateY(-8px);
+}
+
+h3,
+button,
+.font-heading {
+    font-family: 'Black Han Sans', sans-serif;
+    font-weight: 400;
+}
+
+h2 {
+    font-family: 'Black Han Sans', sans-serif;
+}
+
+body {
+    min-height: max(884px, 100dvh);
+}
+
+/* 카드 드로우 애니메이션 */
+@keyframes drawCard {
+    from {
+        transform: translate(0, -200px) scale(0.1);
+        opacity: 0;
+    }
+
+    to {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+    }
+}
+
+.animate-draw-card {
+    animation: drawCard 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
